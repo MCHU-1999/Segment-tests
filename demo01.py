@@ -14,14 +14,24 @@ def load_model():
     model = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b0-finetuned-ade-512-512")
     return processor, model
 
-def create_colored_segmentation(pred_seg, num_classes=150):
+def create_colored_segmentation(pred_seg, num_classes=150, model=None):
     """Create a colored segmentation image from prediction tensor"""
     # Convert to numpy
     pred_np = pred_seg.cpu().numpy().astype(np.uint8)
     
     # Create a colormap for visualization
-    colors = plt.cm.get_cmap('tab20', num_classes)
+    colors = plt.colormaps.get_cmap('tab20').resampled(num_classes)
     colored_seg = colors(pred_np / num_classes)
+    
+    # Print color mapping for each class found
+    if model:
+        unique_classes = np.unique(pred_np)
+        print("\nColor-to-class mapping:")
+        for class_id in unique_classes:
+            color_rgba = colors(class_id / num_classes)
+            color_rgb = tuple((np.array(color_rgba[:3]) * 255).astype(int))
+            class_name = model.config.id2label[class_id]
+            print(f"  RGB{color_rgb} = {class_name}")
     
     # Convert to 0-255 range and remove alpha channel
     colored_seg = (colored_seg[:, :, :3] * 255).astype(np.uint8)
@@ -87,40 +97,16 @@ def process_single_image(image_path, processor, model, output_dir="./results"):
         print(f"Specific Building Parts found: {found_parts}")
         
         # Create visualizations
-        colored_segmentation = create_colored_segmentation(pred_seg)
+        colored_segmentation = create_colored_segmentation(pred_seg, model=model)
         overlay_result = create_overlay_image(image, colored_segmentation, alpha=0.4)
         
         # Save individual images
         overlay_image = Image.fromarray(overlay_result)
-
         overlay_path = os.path.join(output_dir, f"{filename}_overlay.png")
-        comparison_path = os.path.join(output_dir, f"{filename}_comparison.png")
-        
         overlay_image.save(overlay_path)
         
-        # Create comparison image
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
-        
-        ax1.imshow(image)
-        ax1.set_title("Original Image")
-        ax1.axis('off')
-        
-        ax2.imshow(colored_segmentation)
-        ax2.set_title("Segmentation Result")
-        ax2.axis('off')
-        
-        ax3.imshow(overlay_result)
-        ax3.set_title("Overlay (Original + Segmentation)")
-        ax3.axis('off')
-        
-        plt.tight_layout()
-        plt.savefig(comparison_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
         print(f"Saved files:")
-        print(f"- {seg_path}")
         print(f"- {overlay_path}")
-        print(f"- {comparison_path}")
         
         return True
         
@@ -173,7 +159,7 @@ if __name__ == "__main__":
     
 
     # Process multiple specific images
-    process_multiple_images(image_list)
+    process_multiple_images([single_image_path])
     
     # Process all images in directory
     # all_images = []
